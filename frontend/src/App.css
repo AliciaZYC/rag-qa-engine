@@ -45,3 +45,15 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
+.status-loading {
+  color: #ffa500;
+}
+
+.status-connected {
+  color: #4ade80;
+}
+
+.status-error {
+  color: #f87171;
+}
+
