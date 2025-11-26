@@ -29,3 +29,33 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
+      - DATABASE_URL=postgresql://rag_user:rag_password@postgres:5432/rag_db
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=rag_db
+      - DB_USER=rag_user
+      - DB_PASSWORD=rag_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: rag_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=rag_db
+      - POSTGRES_USER=rag_user
+      - POSTGRES_PASSWORD=rag_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

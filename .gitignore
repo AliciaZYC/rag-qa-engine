@@ -123,7 +123,6 @@ dmypy.json
 cython_debug/
 
 # Local data/cache
-data/
 *.sqlite
 *.sqlite3
 
