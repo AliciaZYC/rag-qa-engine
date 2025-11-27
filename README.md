@@ -43,6 +43,17 @@ docker-compose exec backend python run_ingestion.py
 ```bash
 curl http://localhost:5000/api/db/test
 ```
+**db UI:**
+
+go to http://localhost:8080, click add new server
+<img width="1276" height="999" alt="image" src="https://github.com/user-attachments/assets/d68620ec-faeb-4aef-b07a-241e9b823bfb" />
+<img width="1220" height="957" alt="image" src="https://github.com/user-attachments/assets/2e246454-dd55-49ba-be04-0a30836406e8" />
+then save it 
+
+
+
+
+
 
 ## Stop
 
