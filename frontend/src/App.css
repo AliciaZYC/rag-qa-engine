@@ -48,6 +48,37 @@
   background-clip: text;
 }
 
+/* Status Badge */
+.status-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.status-badge.connected {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-badge.disconnected {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-badge::before {
+  content: "●";
+  font-size: 0.5rem;
+  display: inline-block;
+}
+
 .clear-button {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -88,6 +119,67 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+/* Connection Alert */
+.connection-alert {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  animation: slideIn 0.3s ease-out;
+}
+
+.connection-alert svg {
+  width: 24px;
+  height: 24px;
+  color: #ef4444;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.connection-alert div {
+  flex: 1;
+}
+
+.connection-alert strong {
+  display: block;
+  color: #ef4444;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.connection-alert p {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
+}
+
+.connection-alert ol {
+  margin: 0.75rem 0 0 0;
+  padding-left: 1.5rem;
+  color: #d1d5db;
+  font-size: 0.875rem;
+  line-height: 1.8;
+}
+
+.connection-alert li {
+  margin-bottom: 0.5rem;
+}
+
+.connection-alert code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 0.8125rem;
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.2);
 }
 
 /* Message Wrapper */
@@ -186,8 +278,24 @@
 }
 
 .message-wrapper.user .message-text {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.2) 0%,
+    rgba(139, 92, 246, 0.2) 100%
+  );
   border-color: rgba(99, 102, 241, 0.3);
+}
+
+/* Error Message */
+.message.error .message-text {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.message.error .message-text::before {
+  content: "⚠️ ";
+  margin-right: 0.5rem;
 }
 
 /* Citations */
@@ -291,7 +399,9 @@
 }
 
 @keyframes bounce {
-  0%, 80%, 100% {
+  0%,
+  80%,
+  100% {
     transform: scale(0);
     opacity: 0.5;
   }
@@ -425,5 +535,20 @@
   .input-form {
     gap: 0.5rem;
   }
-}
 
+  .status-badge {
+    font-size: 0.6875rem;
+    padding: 0.2rem 0.5rem;
+    margin-left: 0.5rem;
+  }
+
+  .connection-alert {
+    padding: 1rem;
+    flex-direction: column;
+  }
+
+  .connection-alert svg {
+    width: 20px;
+    height: 20px;
+  }
+}

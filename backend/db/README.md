@@ -30,7 +30,7 @@ docker-compose exec backend bash db/run_ingestion.sh
 
 ```bash
 # Trigger ingestion via HTTP
-curl -X POST http://localhost:5000/api/db/ingest
+curl -X POST http://localhost:5001/api/db/ingest
 ```
 
 ## What the Ingestion Does
@@ -55,6 +55,6 @@ Edit `ingest_data.py` to adjust:
 docker-compose exec backend python -c "from db import db; import psycopg2.extras; cur = db.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor); cur.execute('SELECT COUNT(*) as count FROM documents'); print(cur.fetchone())"
 
 # Or via API
-curl http://localhost:5000/api/db/test
+curl http://localhost:5001/api/db/test
 ```
 

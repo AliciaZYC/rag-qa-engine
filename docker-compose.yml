@@ -12,7 +12,7 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
-      - VITE_API_URL=http://localhost:5000
+      - VITE_API_URL=http://localhost:5001
     depends_on:
       - backend
     stdin_open: true
@@ -23,7 +23,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
       - ./backend:/app
     environment:
@@ -35,6 +35,8 @@ services:
       - DB_NAME=rag_db
       - DB_USER=rag_user
       - DB_PASSWORD=rag_password
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=qwen2.5:0.5b
     depends_on:
       postgres:
         condition: service_healthy
