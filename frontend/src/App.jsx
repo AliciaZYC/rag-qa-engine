@@ -21,7 +21,8 @@ function App() {
   const messagesEndRef = useRef(null);
 
   // API base URL - Configured via Docker environment variable
-  // Connects to localhost:5001 (mapped to backend container:5000)
+  // Uses 127.0.0.1 instead of localhost to avoid IPv6 resolution issues on Windows
+  // Connects to 127.0.0.1:5001 (mapped to backend container:5000)
   const API_BASE_URL = import.meta.env.VITE_API_URL;
 
   // Auto-scroll to bottom when new messages arrive

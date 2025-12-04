@@ -34,9 +34,11 @@ class OllamaClient:
     def check_connection():
         """Check if Ollama service is running"""
         try:
-            response = requests.get(f"{OLLAMA_BASE_URL}/api/tags")
+            response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+            print(f"[DEBUG] Ollama connection check: {OLLAMA_BASE_URL}/api/tags -> Status: {response.status_code}")
             return response.status_code == 200
-        except:
+        except Exception as e:
+            print(f"[DEBUG] Ollama connection failed: {OLLAMA_BASE_URL} -> Error: {str(e)}")
             return False
     
     @staticmethod
@@ -105,19 +107,22 @@ def health():
     db_status = False
     try:
         db_status = db.test_connection()
-    except:
-        pass
+    except Exception as e:
+        print(f"[DEBUG] Database health check failed: {str(e)}")
     
     ollama_status = ollama.check_connection()
     
-    return jsonify({
+    response_data = {
         "status": "healthy" if (ollama_status or db_status) else "error",
         "services": {
             "database": "connected" if db_status else "disconnected",
             "ollama": "connected" if ollama_status else "disconnected",
             "ollama_model": OLLAMA_MODEL if ollama_status else "N/A"
         }
-    })
+    }
+    
+    print(f"[DEBUG] Health check response: {response_data}")
+    return jsonify(response_data)
 
 # ========== Database related endpoints ==========
 
