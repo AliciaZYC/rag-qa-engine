@@ -8,6 +8,10 @@ import json
 import os
 from typing import Dict, List
 
+# LangChain imports
+from langchain_community.chat_models import ChatOllama
+from langchain.schema import HumanMessage, SystemMessage, AIMessage
+
 app = Flask(__name__)
 CORS(app)
 
@@ -27,11 +31,19 @@ ingestion_status = {
 # Store conversation history (Redis recommended for production)
 conversations = {}
 
-class OllamaClient:
-    """Simple Ollama client"""
+class LangChainOllamaClient:
+    """LangChain-based Ollama client for LLM interactions"""
     
-    @staticmethod
-    def check_connection():
+    def __init__(self):
+        """Initialize the ChatOllama model"""
+        self.llm = ChatOllama(
+            base_url=OLLAMA_BASE_URL,
+            model=OLLAMA_MODEL,
+            temperature=0.7,
+            num_predict=1000,
+        )
+    
+    def check_connection(self):
         """Check if Ollama service is running"""
         try:
             response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
@@ -41,46 +53,57 @@ class OllamaClient:
             print(f"[DEBUG] Ollama connection failed: {OLLAMA_BASE_URL} -> Error: {str(e)}")
             return False
     
-    @staticmethod
-    def chat(messages: List[Dict], model: str = OLLAMA_MODEL):
+    def chat(self, messages: List[Dict], model: str = None):
         """
-        Send chat request to Ollama
+        Send chat request to Ollama using LangChain
         
         Args:
-            messages: List of message history
-            model: Model to use
+            messages: List of message history in format [{"role": "user", "content": "..."}, ...]
+            model: Model to use (optional, uses default if not specified)
             
         Returns:
             AI response text
         """
-        url = f"{OLLAMA_BASE_URL}/api/chat"
-        payload = {
-            "model": model,
-            "messages": messages,
-            "stream": False,
-            "options": {
-                "temperature": 0.7,
-                "num_predict": 1000,  # Maximum generation length
-            }
-        }
-        
         try:
-            response = requests.post(url, json=payload)
-            if response.status_code == 200:
-                result = response.json()
-                return result.get('message', {}).get('content', '')
+            # Convert message format to LangChain format
+            langchain_messages = []
+            for msg in messages:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                
+                if role == "system":
+                    langchain_messages.append(SystemMessage(content=content))
+                elif role == "user":
+                    langchain_messages.append(HumanMessage(content=content))
+                elif role == "assistant":
+                    langchain_messages.append(AIMessage(content=content))
+            
+            # Use specific model if provided
+            if model and model != OLLAMA_MODEL:
+                llm = ChatOllama(
+                    base_url=OLLAMA_BASE_URL,
+                    model=model,
+                    temperature=0.7,
+                    num_predict=1000,
+                )
+                response = llm.invoke(langchain_messages)
             else:
-                return f"Error: {response.status_code}"
+                response = self.llm.invoke(langchain_messages)
+            
+            return response.content
+            
         except Exception as e:
+            print(f"[ERROR] LangChain chat error: {str(e)}")
             return f"Error connecting to Ollama: {str(e)}"
 
-# Initialize Ollama client
-ollama = OllamaClient()
+# Initialize LangChain Ollama client
+ollama = LangChainOllamaClient()
 
 @app.route('/')
 def home():
     return jsonify({
-        "message": "RAG QA Engine API with Ollama",
+        "message": "RAG QA Engine API with LangChain + Ollama",
+        "version": "2.0 - LangChain Integration",
         "endpoints": {
             "database": {
                 "/api/db/test": "Test database connection",
@@ -88,7 +111,7 @@ def home():
                 "/api/db/ingest/status": "View import status"
             },
             "ollama": {
-                "/api/chat": "AI chat (POST)",
+                "/api/chat": "AI chat with LangChain (POST)",
                 "/api/chat/simple": "Simple Q&A (POST)",
                 "/api/chat/clear": "Clear session (POST)",
                 "/api/chat/history": "View history (GET)",
@@ -98,6 +121,10 @@ def home():
                 "/api/health": "Health check",
                 "/api/query": "Query endpoint (POST)"
             }
+        },
+        "features": {
+            "langchain": "Integrated for advanced LLM orchestration",
+            "rag": "Coming soon - Vector search + retrieval"
         }
     })
 
@@ -117,7 +144,8 @@ def health():
         "services": {
             "database": "connected" if db_status else "disconnected",
             "ollama": "connected" if ollama_status else "disconnected",
-            "ollama_model": OLLAMA_MODEL if ollama_status else "N/A"
+            "ollama_model": OLLAMA_MODEL if ollama_status else "N/A",
+            "langchain": "integrated"
         }
     }
     
@@ -456,7 +484,7 @@ def query():
 if __name__ == '__main__':
     # Check service status on startup
     print("=" * 50)
-    print("Starting RAG QA Engine with Ollama")
+    print("Starting RAG QA Engine with LangChain + Ollama")
     print("=" * 50)
     
     # Check Ollama
