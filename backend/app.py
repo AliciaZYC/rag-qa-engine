@@ -11,11 +11,11 @@ from typing import Dict, List
 app = Flask(__name__)
 CORS(app)
 
-# Ollama 配置
-# 从环境变量读取，如果未设置则使用默认值
-# 在 Docker 容器中，使用 host.docker.internal 访问宿主机服务
+# Ollama configuration
+# Read from environment variables, use default values if not set
+# In Docker containers, use host.docker.internal to access host services
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")  # 最小的模型
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")  # Smallest model
 
 # Track ingestion status
 ingestion_status = {
@@ -24,15 +24,15 @@ ingestion_status = {
     "status": "not_started"
 }
 
-# 存储会话历史（生产环境建议使用 Redis）
+# Store conversation history (Redis recommended for production)
 conversations = {}
 
 class OllamaClient:
-    """简单的 Ollama 客户端"""
+    """Simple Ollama client"""
     
     @staticmethod
     def check_connection():
-        """检查 Ollama 服务是否运行"""
+        """Check if Ollama service is running"""
         try:
             response = requests.get(f"{OLLAMA_BASE_URL}/api/tags")
             return response.status_code == 200
@@ -42,14 +42,14 @@ class OllamaClient:
     @staticmethod
     def chat(messages: List[Dict], model: str = OLLAMA_MODEL):
         """
-        发送聊天请求到 Ollama
+        Send chat request to Ollama
         
         Args:
-            messages: 消息历史列表
-            model: 使用的模型
+            messages: List of message history
+            model: Model to use
             
         Returns:
-            AI 的回复文本
+            AI response text
         """
         url = f"{OLLAMA_BASE_URL}/api/chat"
         payload = {
@@ -58,7 +58,7 @@ class OllamaClient:
             "stream": False,
             "options": {
                 "temperature": 0.7,
-                "num_predict": 1000,  # 最大生成长度
+                "num_predict": 1000,  # Maximum generation length
             }
         }
         
@@ -72,7 +72,7 @@ class OllamaClient:
         except Exception as e:
             return f"Error connecting to Ollama: {str(e)}"
 
-# 初始化 Ollama 客户端
+# Initialize Ollama client
 ollama = OllamaClient()
 
 @app.route('/')
@@ -81,27 +81,27 @@ def home():
         "message": "RAG QA Engine API with Ollama",
         "endpoints": {
             "database": {
-                "/api/db/test": "测试数据库连接",
-                "/api/db/ingest": "触发数据导入（POST）",
-                "/api/db/ingest/status": "查看导入状态"
+                "/api/db/test": "Test database connection",
+                "/api/db/ingest": "Trigger data import (POST)",
+                "/api/db/ingest/status": "View import status"
             },
             "ollama": {
-                "/api/chat": "AI 聊天（POST）",
-                "/api/chat/simple": "简单问答（POST）",
-                "/api/chat/clear": "清除会话（POST）",
-                "/api/chat/history": "查看历史（GET）",
-                "/api/models": "查看可用模型"
+                "/api/chat": "AI chat (POST)",
+                "/api/chat/simple": "Simple Q&A (POST)",
+                "/api/chat/clear": "Clear session (POST)",
+                "/api/chat/history": "View history (GET)",
+                "/api/models": "View available models"
             },
             "general": {
-                "/api/health": "健康检查",
-                "/api/query": "查询端点（POST）"
+                "/api/health": "Health check",
+                "/api/query": "Query endpoint (POST)"
             }
         }
     })
 
 @app.route('/api/health')
 def health():
-    """健康检查 - 检查数据库和 Ollama 状态"""
+    """Health check - Check database and Ollama status"""
     db_status = False
     try:
         db_status = db.test_connection()
@@ -119,7 +119,7 @@ def health():
         }
     })
 
-# ========== 数据库相关端点 ==========
+# ========== Database related endpoints ==========
 
 @app.route('/api/db/test')
 def test_db():
@@ -202,11 +202,11 @@ def ingest_status():
     """Get ingestion status"""
     return jsonify(ingestion_status)
 
-# ========== Ollama 相关端点 ==========
+# ========== Ollama related endpoints ==========
 
 @app.route('/api/models')
 def list_models():
-    """列出可用的 Ollama 模型"""
+    """List available Ollama models"""
     try:
         response = requests.get(f"{OLLAMA_BASE_URL}/api/tags")
         if response.status_code == 200:
@@ -215,10 +215,10 @@ def list_models():
                 "current_model": OLLAMA_MODEL,
                 "available_models": [m['name'] for m in models],
                 "recommended_small_models": [
-                    "qwen2.5:0.5b",  # 500M 参数，最快
-                    "gemma2:2b",     # 2B 参数，效果更好
-                    "tinyllama",     # 1.1B 参数
-                    "phi3:mini"      # 微软的小模型
+                    "qwen2.5:0.5b",  # 500M parameters, fastest
+                    "gemma2:2b",     # 2B parameters, better quality
+                    "tinyllama",     # 1.1B parameters
+                    "phi3:mini"      # Microsoft's small model
                 ]
             })
     except Exception as e:
@@ -227,13 +227,13 @@ def list_models():
 @app.route('/api/chat', methods=['POST'])
 def chat():
     """
-    主要聊天端点 - 支持上下文对话
+    Main chat endpoint - Supports contextual conversation
     
     Request body:
     {
-        "message": "用户的问题",
-        "session_id": "可选的会话ID，用于保持上下文",
-        "system_prompt": "可选的系统提示词"
+        "message": "User's question",
+        "session_id": "Optional session ID for maintaining context",
+        "system_prompt": "Optional system prompt"
     }
     """
     try:
@@ -241,15 +241,15 @@ def chat():
         user_message = data.get('message', '')
         session_id = data.get('session_id', 'default')
         system_prompt = data.get('system_prompt', 
-            "你是一位专业的法律顾问助手。请用通俗易懂的语言为用户提供法律建议。"
-            "注意：你提供的是一般性法律信息和建议，不构成正式的法律意见。"
-            "对于复杂的法律问题，建议用户咨询专业律师。"
+            "You are a professional legal advisor assistant. Please provide legal advice in easy-to-understand language. "
+            "Note: You provide general legal information and advice, which does not constitute formal legal opinion. "
+            "For complex legal issues, users should consult a professional lawyer."
         )
         
         if not user_message:
             return jsonify({"error": "Message is required"}), 400
         
-        # 获取或创建会话历史
+        # Get or create conversation history
         if session_id not in conversations:
             conversations[session_id] = [
                 {"role": "system", "content": system_prompt}
@@ -257,16 +257,16 @@ def chat():
         
         messages = conversations[session_id]
         
-        # 添加用户消息
+        # Add user message
         messages.append({"role": "user", "content": user_message})
         
-        # 调用 Ollama
+        # Call Ollama
         ai_response = ollama.chat(messages)
         
-        # 添加 AI 回复到历史
+        # Add AI response to history
         messages.append({"role": "assistant", "content": ai_response})
         
-        # 限制历史长度（保留系统提示 + 最近10轮对话）
+        # Limit history length (keep system prompt + last 10 rounds of conversation)
         if len(messages) > 21:  # 1 system + 20 messages (10 rounds)
             conversations[session_id] = [messages[0]] + messages[-20:]
         else:
@@ -275,7 +275,7 @@ def chat():
         return jsonify({
             "response": ai_response,
             "session_id": session_id,
-            "message_count": len(messages) - 1  # 不计算系统提示
+            "message_count": len(messages) - 1  # Excluding system prompt
         })
         
     except Exception as e:
@@ -284,11 +284,11 @@ def chat():
 @app.route('/api/chat/simple', methods=['POST'])
 def simple_chat():
     """
-    简单聊天端点（无上下文）
+    Simple chat endpoint (no context)
     
     Request body:
     {
-        "message": "用户的问题"
+        "message": "User's question"
     }
     """
     try:
@@ -301,7 +301,7 @@ def simple_chat():
         messages = [
             {
                 "role": "system", 
-                "content": "你是一位专业的法律顾问助手。请简洁地回答用户的法律问题。"
+                "content": "You are a professional legal advisor assistant. Please answer user's legal questions concisely."
             },
             {
                 "role": "user", 
@@ -309,7 +309,7 @@ def simple_chat():
             }
         ]
         
-        # 调用 Ollama
+        # Call Ollama
         ai_response = ollama.chat(messages)
         
         return jsonify({
@@ -322,11 +322,11 @@ def simple_chat():
 @app.route('/api/chat/clear', methods=['POST'])
 def clear_chat():
     """
-    清除会话历史
+    Clear conversation history
     
     Request body:
     {
-        "session_id": "要清除的会话ID"
+        "session_id": "Session ID to clear"
     }
     """
     data = request.json
@@ -345,15 +345,15 @@ def clear_chat():
 @app.route('/api/chat/history', methods=['GET'])
 def get_history():
     """
-    获取会话历史（用于调试）
+    Get conversation history (for debugging)
     
     Query params:
-    - session_id: 会话ID
+    - session_id: Session ID
     """
     session_id = request.args.get('session_id', 'default')
     
     if session_id in conversations:
-        # 过滤掉系统消息，只返回用户和助手的对话
+        # Filter out system messages, only return user and assistant conversation
         messages = [
             msg for msg in conversations[session_id] 
             if msg['role'] != 'system'
@@ -372,10 +372,10 @@ def get_history():
 
 @app.route('/api/sessions', methods=['GET'])
 def list_sessions():
-    """列出所有活跃的会话"""
+    """List all active sessions"""
     sessions = []
     for sid, messages in conversations.items():
-        # 计算用户消息数量
+        # Count user messages
         user_messages = [m for m in messages if m['role'] == 'user']
         sessions.append({
             "session_id": sid,
@@ -389,18 +389,18 @@ def list_sessions():
         "total": len(sessions)
     })
 
-# ========== 原有的查询端点 ==========
+# ========== Original query endpoint ==========
 
 @app.route('/api/query', methods=['POST'])
 def query():
     """
-    通用查询端点 - 可以扩展为结合数据库和 Ollama 的查询
+    General query endpoint - Can be extended to combine database and Ollama queries
     
     Request body:
     {
-        "query": "查询内容",
+        "query": "Query content",
         "use_ai": true/false,
-        "session_id": "可选的会话ID"
+        "session_id": "Optional session ID"
     }
     """
     try:
@@ -416,22 +416,22 @@ def query():
             "query": query_text
         }
         
-        # 如果启用 AI，使用 Ollama 生成回答
+        # If AI is enabled, use Ollama to generate response
         if use_ai and ollama.check_connection():
-            # 获取或创建会话历史
+            # Get or create conversation history
             if session_id not in conversations:
                 conversations[session_id] = [
-                    {"role": "system", "content": "你是一位专业的助手，请根据用户的问题提供帮助。"}
+                    {"role": "system", "content": "You are a professional assistant. Please help users based on their questions."}
                 ]
             
             messages = conversations[session_id]
             messages.append({"role": "user", "content": query_text})
             
-            # 调用 Ollama
+            # Call Ollama
             ai_response = ollama.chat(messages)
             messages.append({"role": "assistant", "content": ai_response})
             
-            # 保存会话历史
+            # Save conversation history
             if len(messages) > 21:
                 conversations[session_id] = [messages[0]] + messages[-20:]
             else:
@@ -449,31 +449,31 @@ def query():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # 启动时检查服务状态
+    # Check service status on startup
     print("=" * 50)
-    print("启动 RAG QA Engine with Ollama")
+    print("Starting RAG QA Engine with Ollama")
     print("=" * 50)
     
-    # 检查 Ollama
-    print(f"   尝试连接: {OLLAMA_BASE_URL}")
+    # Check Ollama
+    print(f"   Attempting to connect: {OLLAMA_BASE_URL}")
     if not ollama.check_connection():
-        print("⚠️  警告: Ollama 服务未运行!")
-        print("   请在另一个终端运行: ollama serve")
-        print("   然后拉取模型: ollama pull qwen2.5:0.5b")
-        print(f"   当前配置的 Ollama URL: {OLLAMA_BASE_URL}")
+        print("⚠️  Warning: Ollama service is not running!")
+        print("   Please run in another terminal: ollama serve")
+        print("   Then pull the model: ollama pull qwen2.5:0.5b")
+        print(f"   Current Ollama URL configuration: {OLLAMA_BASE_URL}")
     else:
-        print("✅ Ollama 服务已连接")
+        print("✅ Ollama service connected")
         print(f"   Ollama URL: {OLLAMA_BASE_URL}")
-        print(f"   使用模型: {OLLAMA_MODEL}")
+        print(f"   Using model: {OLLAMA_MODEL}")
     
-    # 检查数据库
+    # Check database
     try:
         if db.test_connection():
-            print("✅ 数据库已连接")
+            print("✅ Database connected")
         else:
-            print("⚠️  警告: 数据库连接失败")
+            print("⚠️  Warning: Database connection failed")
     except Exception as e:
-        print(f"⚠️  警告: 数据库不可用 - {e}")
+        print(f"⚠️  Warning: Database unavailable - {e}")
     
     print("=" * 50)
     

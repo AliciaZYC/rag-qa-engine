@@ -6,22 +6,23 @@ function App() {
     {
       id: 1,
       type: "assistant",
-      content: "你好！我是你的法律顾问助手。请问有什么可以帮助你的？",
+      content: "Hello! I'm your legal advisor assistant. How can I help you?",
       timestamp: new Date(),
       citations: [],
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId] = useState(`session_${Date.now()}`); // 生成唯一的会话ID
+  const [sessionId] = useState(`session_${Date.now()}`); // Generate unique session ID
   const [backendStatus, setBackendStatus] = useState({
     ollama: false,
     checked: false,
   });
   const messagesEndRef = useRef(null);
 
-  // API 基础URL
-  const API_BASE_URL = "http://localhost:5001";
+  // API base URL - Configured via Docker environment variable
+  // Connects to localhost:5001 (mapped to backend container:5000)
+  const API_BASE_URL = import.meta.env.VITE_API_URL;
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -32,10 +33,10 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
-  // 检查后端状态
+  // Check backend status
   useEffect(() => {
     checkBackendStatus();
-    // 每30秒检查一次状态
+    // Check status every 30 seconds
     const interval = setInterval(checkBackendStatus, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -52,16 +53,16 @@ function App() {
           checked: true,
         });
 
-        // 如果是第一次成功连接，显示欢迎消息
+        // If first successful connection, show welcome message
         if (data.services?.ollama === "connected" && !backendStatus.ollama) {
           setMessages((prev) => [
             ...prev,
             {
               id: Date.now(),
               type: "assistant",
-              content: `已成功连接到 Ollama 服务！使用模型：${
+              content: `Successfully connected to Ollama service! Using model: ${
                 data.services?.ollama_model || "qwen2.5:0.5b"
-              }。你可以开始提问了。`,
+              }. You can start asking questions now.`,
               timestamp: new Date(),
               citations: [],
             },
@@ -93,7 +94,7 @@ function App() {
     setIsLoading(true);
 
     try {
-      // 调用后端 Ollama API
+      // Call backend Ollama API
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: {
@@ -103,7 +104,7 @@ function App() {
           message: userMessage.content,
           session_id: sessionId,
           system_prompt:
-            "你是一位专业的法律顾问助手。请用通俗易懂的语言为用户提供法律建议。注意：你提供的是一般性法律信息和建议，不构成正式的法律意见。对于复杂的法律问题，建议用户咨询专业律师。",
+            "You are a professional legal advisor assistant. Please provide legal advice in easy-to-understand language. Note: You provide general legal information and advice, which does not constitute formal legal opinion. For complex legal issues, users should consult a professional lawyer.",
         }),
       });
 
@@ -116,24 +117,24 @@ function App() {
 
       const data = await response.json();
 
-      // 添加 AI 回复
+      // Add AI response
       const assistantMessage = {
         id: Date.now() + 1,
         type: "assistant",
-        content: data.response || "抱歉，无法获取回复。",
+        content: data.response || "Sorry, unable to get a response.",
         timestamp: new Date(),
-        citations: [], // 可以后续添加引用功能
+        citations: [], // Can add citation feature later
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error("Error sending message:", error);
 
-      // 错误消息
+      // Error message
       const errorMessage = {
         id: Date.now() + 1,
         type: "assistant",
-        content: `❌ 错误：${error.message}\n\n请确保：\n1. 后端服务正在运行 (python app.py)\n2. Ollama 服务已启动 (ollama serve)\n3. 已下载模型 (ollama pull qwen2.5:0.5b)`,
+        content: `❌ Error: ${error.message}\n\nPlease ensure:\n1. Ollama service is started on host (ollama serve)\n2. Model is downloaded (ollama pull qwen2.5:0.5b)\n3. Docker services are running (docker-compose up)`,
         timestamp: new Date(),
         citations: [],
         isError: true,
@@ -146,7 +147,7 @@ function App() {
 
   // Handle clearing the chat
   const handleClearChat = async () => {
-    // 清除后端会话
+    // Clear backend session
     try {
       await fetch(`${API_BASE_URL}/api/chat/clear`, {
         method: "POST",
@@ -161,19 +162,19 @@ function App() {
       console.error("Error clearing chat:", error);
     }
 
-    // 清除前端消息
+    // Clear frontend messages
     setMessages([
       {
         id: Date.now(),
         type: "assistant",
-        content: "对话已清除。有什么新的问题吗？",
+        content: "Chat cleared. Do you have any new questions?",
         timestamp: new Date(),
         citations: [],
       },
     ]);
   };
 
-  // 处理按键事件（支持 Ctrl+Enter 发送）
+  // Handle key press events (support Enter to send)
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -196,7 +197,7 @@ function App() {
             >
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-            <h1>法律咨询助手</h1>
+            <h1>Legal Advisor Assistant</h1>
             {backendStatus.checked && (
               <span
                 className={`status-badge ${
@@ -204,11 +205,11 @@ function App() {
                 }`}
                 title={
                   backendStatus.ollama
-                    ? `已连接 - 模型: ${backendStatus.model}`
-                    : "未连接到 Ollama"
+                    ? `Connected - Model: ${backendStatus.model}`
+                    : "Not connected to Ollama"
                 }
               >
-                {backendStatus.ollama ? "● 在线" : "● 离线"}
+                {backendStatus.ollama ? "● Online" : "● Offline"}
               </span>
             )}
           </div>
@@ -232,7 +233,7 @@ function App() {
       {/* Messages Container */}
       <main className="messages-container">
         <div className="messages">
-          {/* 如果没有连接，显示提示 */}
+          {/* Show alert if not connected */}
           {backendStatus.checked && !backendStatus.ollama && (
             <div className="connection-alert">
               <svg
@@ -246,17 +247,17 @@ function App() {
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
               <div>
-                <strong>未连接到 Ollama 服务</strong>
-                <p>请按以下步骤启动服务：</p>
+                <strong>Not connected to Ollama service</strong>
+                <p>Please follow these steps to start the service:</p>
                 <ol>
                   <li>
-                    终端1：运行 <code>ollama serve</code>
+                    Start Ollama on host machine: <code>ollama serve</code>
                   </li>
                   <li>
-                    终端2：运行 <code>ollama pull qwen2.5:0.5b</code>
+                    Pull the model: <code>ollama pull qwen2.5:0.5b</code>
                   </li>
                   <li>
-                    终端3：运行 <code>python app.py</code>
+                    Start Docker services: <code>docker-compose up</code>
                   </li>
                 </ol>
               </div>
@@ -294,7 +295,7 @@ function App() {
                 <div className="message-content">
                   <div className="message-header">
                     <span className="message-sender">
-                      {message.type === "user" ? "你" : "AI 助手"}
+                      {message.type === "user" ? "You" : "AI Assistant"}
                     </span>
                     <span className="message-time">
                       {message.timestamp.toLocaleTimeString([], {
@@ -354,10 +355,10 @@ function App() {
             className="input-field"
             placeholder={
               !backendStatus.checked
-                ? "正在连接服务器..."
+                ? "Connecting to server..."
                 : !backendStatus.ollama
-                ? "请先启动 Ollama 服务..."
-                : "输入你的法律问题..."
+                ? "Please start Ollama service first..."
+                : "Enter your legal question..."
             }
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -368,7 +369,7 @@ function App() {
             type="submit"
             className="send-button"
             disabled={!input.trim() || isLoading || !backendStatus.ollama}
-            title={!backendStatus.ollama ? "Ollama 服务未连接" : "发送消息"}
+            title={!backendStatus.ollama ? "Ollama service not connected" : "Send message"}
           >
             <svg
               viewBox="0 0 24 24"
