@@ -34,12 +34,9 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
-  // Check backend status
+  // Check backend status once on startup
   useEffect(() => {
     checkBackendStatus();
-    // Check status every 30 seconds
-    const interval = setInterval(checkBackendStatus, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const checkBackendStatus = async () => {
@@ -53,22 +50,6 @@ function App() {
           model: data.services?.ollama_model || "N/A",
           checked: true,
         });
-
-        // If first successful connection, show welcome message
-        if (data.services?.ollama === "connected" && !backendStatus.ollama) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now(),
-              type: "assistant",
-              content: `Successfully connected to Ollama service! Using model: ${
-                data.services?.ollama_model || "qwen2.5:0.5b"
-              }. You can start asking questions now.`,
-              timestamp: new Date(),
-              citations: [],
-            },
-          ]);
-        }
       } else {
         setBackendStatus({ ollama: false, database: false, checked: true });
       }
