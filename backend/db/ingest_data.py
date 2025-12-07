@@ -1,6 +1,9 @@
 """
-Data Ingestion Script for RAG QA Engine
-Loads parquet data, chunks into 500-character segments, generates embeddings, and stores in PostgreSQL
+Upgraded Data Ingestion Pipeline v2.0
+Features:
+- Hybrid structural-semantic chunking
+- LegalBERT embeddings with MiniLM fallback
+- Enhanced metadata storage
 """
 import os
 import sys
@@ -8,22 +11,37 @@ import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_batch
 from pgvector.psycopg2 import register_vector
-from sentence_transformers import SentenceTransformer
 import numpy as np
 from datetime import datetime
+import json
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from chunking import HybridChunker
+from embeddings import DualEmbedder, ModelType
 
 # Configuration
-CHUNK_SIZE = 1000  # characters per chunk
-BATCH_SIZE = 100  # number of chunks to insert at once
-MAX_CHUNKS = 100  # maximum number of chunks to process (None for all)
+BATCH_SIZE = 100
+MAX_CHUNKS = 100  # Set to None for all data
 DATA_PATH = '/app/data/train.parquet'
 
-class DataIngestion:
+# Chunking config
+CHUNK_MAX_TOKENS = 400
+OVERLAP_SENTENCES = 1
+SEMANTIC_THRESHOLD = 0.6
+USE_SEMANTIC_CHUNKING = True
+
+# Embedding config
+USE_LEGAL_BERT = True  # Set to False to use MiniLM fallback
+
+class DataIngestionV2:
     def __init__(self):
         self.conn = None
-        self.model = None
+        self.chunker = None
+        self.embedder = None
         self.connect_db()
-        self.load_model()
+        self.initialize_models()
     
     def connect_db(self):
         """Connect to PostgreSQL database"""
@@ -41,76 +59,115 @@ class DataIngestion:
             print(f"✗ Database connection failed: {e}")
             sys.exit(1)
     
-    def load_model(self):
-        """Load sentence transformer model for embeddings"""
+    def initialize_models(self):
+        """Initialize chunker and embedder"""
         try:
-            print("Loading embedding model (this may take a moment)...")
-            # Using all-MiniLM-L6-v2: lightweight, fast, 384-dimensional embeddings
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
-            print(f"✓ Model loaded: all-MiniLM-L6-v2 (384 dimensions)")
+            print("\n" + "=" * 60)
+            print("INITIALIZING MODELS")
+            print("=" * 60)
+            
+            # Initialize chunker
+            print("\n[1/2] Initializing Hybrid Chunker...")
+            self.chunker = HybridChunker(
+                max_tokens=CHUNK_MAX_TOKENS,
+                overlap_sentences=OVERLAP_SENTENCES,
+                semantic_threshold=SEMANTIC_THRESHOLD,
+                use_semantic=USE_SEMANTIC_CHUNKING
+            )
+            print("✓ Chunker initialized")
+            
+            # Initialize embedder
+            print("\n[2/2] Initializing Dual Embedder...")
+            self.embedder = DualEmbedder(
+                primary_model=ModelType.LEGAL_BERT,
+                fallback_model=ModelType.MINI_LM,
+                use_fallback=not USE_LEGAL_BERT
+            )
+            
+            embedder_info = self.embedder.get_info()
+            print("✓ Embedder initialized")
+            print(f"  Active model: {embedder_info['model_name']}")
+            print(f"  Dimensions: {embedder_info['dimension']}")
+            print(f"  Legal optimized: {embedder_info['legal_optimized']}")
+            
+            print("=" * 60)
+            
         except Exception as e:
-            print(f"✗ Model loading failed: {e}")
+            print(f"✗ Model initialization failed: {e}")
+            import traceback
+            traceback.print_exc()
             sys.exit(1)
     
-    def chunk_text(self, text, chunk_size=CHUNK_SIZE):
-        """
-        Split text into chunks of approximately chunk_size characters
-        Tries to break at sentence boundaries when possible
-        """
-        if not text or len(text) == 0:
-            return []
-        
-        chunks = []
-        start = 0
-        text_len = len(text)
-        
-        while start < text_len:
-            end = start + chunk_size
+    def update_schema(self):
+        """Update database schema for new metadata columns"""
+        try:
+            print("\nUpdating database schema...")
+            cursor = self.conn.cursor()
             
-            # If we're not at the end, try to break at a sentence boundary
-            if end < text_len:
-                # Look for sentence endings in the last 50 characters of the chunk
-                chunk_text = text[start:end]
-                sentence_breaks = ['. ', '! ', '? ', '\n\n']
-                best_break = -1
-                
-                for break_char in sentence_breaks:
-                    pos = chunk_text.rfind(break_char)
-                    if pos > chunk_size * 0.7:  # Only break if it's reasonably far in
-                        best_break = max(best_break, pos + len(break_char))
-                
-                if best_break > 0:
-                    end = start + best_break
+            # Add new metadata columns if they don't exist
+            metadata_columns = [
+                ('provision_label', 'VARCHAR(100)'),
+                ('section_number', 'VARCHAR(50)'),
+                ('chunk_method', 'VARCHAR(50)'),
+                ('token_count', 'INTEGER')
+            ]
             
-            chunk = text[start:end].strip()
-            if chunk:
-                chunks.append(chunk)
+            for col_name, col_type in metadata_columns:
+                try:
+                    cursor.execute(f"""
+                        ALTER TABLE documents 
+                        ADD COLUMN IF NOT EXISTS {col_name} {col_type}
+                    """)
+                    print(f"  ✓ Added column: {col_name}")
+                except Exception as e:
+                    if "already exists" not in str(e).lower():
+                        print(f"  ⚠️ Column {col_name}: {e}")
             
-            start = end
-        
-        return chunks
+            # Update embedding dimension if using LegalBERT
+            target_dim = self.embedder.get_dimension()
+            if target_dim == 768:
+                print(f"\n  Updating embedding dimension to {target_dim}...")
+                try:
+                    cursor.execute(f"""
+                        ALTER TABLE documents 
+                        ALTER COLUMN embedding TYPE vector({target_dim})
+                    """)
+                    print(f"  ✓ Embedding dimension updated to {target_dim}")
+                except Exception as e:
+                    if "type vector does not exist" in str(e).lower():
+                        print(f"  ⚠️ Dimension update skipped: {e}")
+                    else:
+                        print(f"  ⚠️ Dimension update: {e}")
+            
+            self.conn.commit()
+            print("✓ Schema update complete\n")
+            cursor.close()
+            
+        except Exception as e:
+            print(f"✗ Schema update failed: {e}")
+            self.conn.rollback()
     
     def load_and_chunk_data(self):
-        """Load parquet data and create chunks"""
+        """Load parquet data and apply hybrid chunking"""
         try:
             print(f"\nLoading data from: {DATA_PATH}")
             df = pd.read_parquet(DATA_PATH)
             print(f"✓ Loaded {len(df)} rows")
             print(f"  Columns: {list(df.columns)}")
             
-            # Determine which columns contain text content
+            # Determine text columns
             text_columns = [col for col in df.columns if df[col].dtype == 'object']
             print(f"  Text columns: {text_columns}")
             
             all_chunks = []
+            provision_stats = {}
             
             for idx, row in df.iterrows():
-                # Check if we've reached the maximum number of chunks
                 if MAX_CHUNKS and len(all_chunks) >= MAX_CHUNKS:
-                    print(f"  Reached maximum chunk limit ({MAX_CHUNKS}), stopping at row {idx}")
+                    print(f"  Reached maximum chunk limit ({MAX_CHUNKS})")
                     break
                 
-                # Combine all text columns for this row
+                # Combine text columns
                 text_parts = []
                 metadata = {}
                 
@@ -121,32 +178,41 @@ class DataIngestion:
                             text_parts.append(f"{col}: {value}")
                         metadata[col] = str(value)
                 
-                # Create full text from all columns
                 full_text = " | ".join(text_parts)
                 
-                # Chunk the text
-                chunks = self.chunk_text(full_text)
+                # Apply hybrid chunking
+                chunks = self.chunker.chunk_document(full_text, metadata)
                 
                 for chunk_idx, chunk in enumerate(chunks):
-                    # Check chunk limit again
                     if MAX_CHUNKS and len(all_chunks) >= MAX_CHUNKS:
                         break
-                        
-                    chunk_metadata = metadata.copy()
-                    chunk_metadata['source_row'] = int(idx)
-                    chunk_metadata['chunk_index'] = chunk_idx
-                    chunk_metadata['total_chunks'] = len(chunks)
                     
-                    all_chunks.append({
-                        'content': chunk,
-                        'metadata': chunk_metadata
-                    })
+                    # Track provision distribution
+                    label = chunk['provision_label']
+                    provision_stats[label] = provision_stats.get(label, 0) + 1
+                    
+                    # Add source metadata
+                    chunk['source_row'] = int(idx)
+                    chunk['chunk_index'] = chunk_idx
+                    chunk['original_metadata'] = metadata
+                    
+                    all_chunks.append(chunk)
                 
-                # Progress indicator
-                if (idx + 1) % 100 == 0:
-                    print(f"  Processed {idx + 1}/{len(df)} rows, {len(all_chunks)} chunks created")
+                if (idx + 1) % 50 == 0:
+                    print(f"  Processed {idx + 1}/{len(df)} rows, {len(all_chunks)} chunks")
             
-            print(f"\n✓ Created {len(all_chunks)} chunks from {len(df)} rows")
+            print(f"\n✓ Created {len(all_chunks)} chunks from {idx + 1} rows")
+            
+            # Display chunking statistics
+            stats = self.chunker.get_stats(all_chunks)
+            print("\nChunking Statistics:")
+            print(f"  Total chunks: {stats['total_chunks']}")
+            print(f"  Avg tokens/chunk: {stats['avg_tokens']:.1f}")
+            print(f"  Token range: [{stats['min_tokens']}, {stats['max_tokens']}]")
+            print(f"\n  Provision distribution:")
+            for label, count in sorted(provision_stats.items(), key=lambda x: -x[1]):
+                print(f"    {label}: {count} chunks")
+            
             return all_chunks
         
         except Exception as e:
@@ -156,48 +222,50 @@ class DataIngestion:
             sys.exit(1)
     
     def generate_embeddings(self, chunks):
-        """Generate embeddings for all chunks"""
+        """Generate embeddings using dual embedder"""
         try:
             print(f"\nGenerating embeddings for {len(chunks)} chunks...")
-            texts = [chunk['content'] for chunk in chunks]
+            texts = [chunk['text'] for chunk in chunks]
             
-            # Generate embeddings in batches
-            embeddings = self.model.encode(
+            embeddings = self.embedder.encode(
                 texts,
                 batch_size=32,
-                show_progress_bar=True,
-                convert_to_numpy=True
+                show_progress=True
             )
             
-            print(f"✓ Generated embeddings with shape: {embeddings.shape}")
+            print(f"✓ Generated embeddings: {embeddings.shape}")
             return embeddings
         
         except Exception as e:
             print(f"✗ Embedding generation failed: {e}")
+            import traceback
+            traceback.print_exc()
             sys.exit(1)
     
     def insert_chunks(self, chunks, embeddings):
-        """Insert chunks with embeddings into database"""
+        """Insert chunks with enhanced metadata"""
         try:
-            import json
-            
             print(f"\nInserting {len(chunks)} chunks into database...")
-            
             cursor = self.conn.cursor()
             
-            # Prepare data for batch insert
+            # Prepare batch data
             data = []
             for chunk, embedding in zip(chunks, embeddings):
                 data.append((
-                    chunk['content'],
+                    chunk['text'],
                     embedding.tolist(),
-                    json.dumps(chunk['metadata'])
+                    json.dumps(chunk['original_metadata']),
+                    chunk.get('provision_label'),
+                    chunk.get('section_number'),
+                    chunk.get('chunk_method'),
+                    chunk.get('token_count')
                 ))
             
             # Batch insert
             insert_query = """
-                INSERT INTO documents (content, embedding, metadata)
-                VALUES (%s, %s, %s::jsonb)
+                INSERT INTO documents 
+                (content, embedding, metadata, provision_label, section_number, chunk_method, token_count)
+                VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s)
             """
             
             execute_batch(cursor, insert_query, data, page_size=BATCH_SIZE)
@@ -220,36 +288,39 @@ class DataIngestion:
             sys.exit(1)
     
     def create_indexes(self):
-        """Create vector similarity indexes after data ingestion"""
+        """Create optimized vector indexes"""
         try:
             print("\nCreating vector similarity index...")
             cursor = self.conn.cursor()
             
-            # Get document count to decide on index type
+            # Drop existing index if it exists
+            cursor.execute("DROP INDEX IF EXISTS documents_embedding_idx")
+            
+            # Get document count
             cursor.execute("SELECT COUNT(*) FROM documents")
             count = cursor.fetchone()[0]
             
-            if count < 100000:
-                # HNSW for smaller datasets (better accuracy)
-                print(f"  Using HNSW index (document count: {count})")
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS documents_embedding_idx 
-                    ON documents USING hnsw (embedding vector_cosine_ops)
-                    WITH (m = 16, ef_construction = 64);
-                """)
-            else:
-                # IVFFlat for larger datasets (faster build)
-                print(f"  Using IVFFlat index (document count: {count})")
-                lists = min(count // 1000, 100)
-                cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS documents_embedding_idx 
-                    ON documents USING ivfflat (embedding vector_cosine_ops)
-                    WITH (lists = {lists});
-                """)
+            # Create HNSW index (optimal for <1M documents)
+            print(f"  Creating HNSW index (document count: {count})")
+            cursor.execute("""
+                CREATE INDEX documents_embedding_idx 
+                ON documents USING hnsw (embedding vector_cosine_ops)
+                WITH (m = 16, ef_construction = 64);
+            """)
+            
+            # Create indexes on metadata columns for filtering
+            print("  Creating metadata indexes...")
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_provision_label 
+                ON documents(provision_label);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_section_number 
+                ON documents(section_number);
+            """)
             
             self.conn.commit()
-            print("✓ Vector index created successfully")
-            
+            print("✓ All indexes created successfully")
             cursor.close()
         
         except Exception as e:
@@ -261,10 +332,14 @@ class DataIngestion:
         """Main ingestion pipeline"""
         start_time = datetime.now()
         print("\n" + "=" * 60)
-        print("RAG DATA INGESTION PIPELINE")
+        print("RAG DATA INGESTION PIPELINE V2.0")
+        print("Hybrid Chunking + LegalBERT Embeddings")
         print("=" * 60)
         
         try:
+            # Step 0: Update schema
+            self.update_schema()
+            
             # Step 1: Load and chunk data
             chunks = self.load_and_chunk_data()
             
@@ -281,15 +356,23 @@ class DataIngestion:
             print("\n" + "=" * 60)
             print(f"✓ INGESTION COMPLETE in {elapsed:.2f}s")
             print("=" * 60)
-        
+            
+            # Display summary
+            print("\nSummary:")
+            print(f"  Chunks processed: {len(chunks)}")
+            print(f"  Embedding model: {self.embedder.get_model_name()}")
+            print(f"  Embedding dimension: {self.embedder.get_dimension()}")
+            print(f"  Chunking method: Hybrid structural-semantic")
+            
         except Exception as e:
             print(f"\n✗ Ingestion failed: {e}")
+            import traceback
+            traceback.print_exc()
             sys.exit(1)
         finally:
             if self.conn:
                 self.conn.close()
 
 if __name__ == "__main__":
-    ingestion = DataIngestion()
+    ingestion = DataIngestionV2()
     ingestion.run()
-

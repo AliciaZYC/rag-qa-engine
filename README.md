@@ -9,25 +9,60 @@
 
 ## How to Run
 
-Download Ollama
+### Prerequisites
 
+1. **Install Ollama**
+   - Download from https://ollama.com/download
+   - Or use: `curl -fsSL https://ollama.com/install.sh | sh`
+
+2. **Start Ollama and Download Model**
 ```bash
+# Start Ollama service (keep this running)
 ollama serve
+
+# In a new terminal, pull the model
 ollama pull qwen2.5:0.5b
-docker-compose up --build
 ```
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:5001
-- pgAdmin (Database UI): http://localhost:8080
+### Setup and Run
+```bash
+# 1. Build and start Docker containers
+docker-compose up --build -d
+
+# 2. Download embedding models and NLTK data (first time only)
+docker-compose exec backend python download_models.py
+
+# 3. Run data ingestion with upgraded pipeline (LegalBERT + Hybrid Chunking)
+docker-compose exec backend python db/ingest_data.py
+
+# 4. Verify system is ready
+docker-compose exec backend python -c "from embeddings import DualEmbedder, ModelType; print('✓ Embeddings working')"
+```
+
+### Access Points
+
+- **Frontend:** http://localhost:5173
+- **Backend API:** http://localhost:5001
+- **pgAdmin (Database UI):** http://localhost:8080
 
 **Note:** If localhost doesn't work, use http://127.0.0.1:5173
-alternative pgAdmin UI: http://127.0.0.1:8080/browser/
+
+### Quick Verification (PowerShell)
+
+Test all components with a single command:
+```powershell
+.\verify_functionality.ps1
+```
+
+This will check:
+- Frontend accessibility
+- Backend health (Ollama, Database, Embedder)
+- Database document count
+- LegalBERT embeddings (768-dim)
 
 ## Data Ingestion
 
 Load data into PostgreSQL with vector embeddings:
-
 ```bash
 docker-compose exec backend python run_ingestion.py
 ```
@@ -46,7 +81,6 @@ docker-compose exec backend python run_ingestion.py
 - `MAX_CHUNKS = 100` - Limit chunks (set to `None` for all data)
 
 **Verify ingestion:**
-
 ```bash
 curl http://localhost:5001/api/db/test
 ```
@@ -61,7 +95,6 @@ go to http://localhost:8080, click add new server
 then save it
 
 ## Stop
-
 ```bash
 docker-compose down
 ```
