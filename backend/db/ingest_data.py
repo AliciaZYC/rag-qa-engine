@@ -27,9 +27,10 @@ MAX_CHUNKS = 3000  # Set to None for all data
 DATA_PATH = '/app/data/train.parquet'
 
 # Chunking config
-CHUNK_MAX_TOKENS = 400
-OVERLAP_SENTENCES = 1
-SEMANTIC_THRESHOLD = 0.6
+CHUNK_MAX_TOKENS = 800  # Increased from 400 for longer, more contextual chunks
+CHUNK_MIN_TOKENS = 100   # Minimum tokens to avoid very short chunks
+OVERLAP_SENTENCES = 2   # Increased overlap for better context continuity
+SEMANTIC_THRESHOLD = 0.5  # Lowered threshold to create larger semantic chunks
 USE_SEMANTIC_CHUNKING = True
 
 # Embedding config
@@ -111,21 +112,27 @@ class DataIngestionV2:
             
             # Add new metadata columns (one at a time with error handling)
             metadata_columns = [
-                ('provision_label', 'VARCHAR(100)'),
-                ('section_number', 'VARCHAR(50)'),
-                ('chunk_method', 'VARCHAR(50)'),
+                ('provision_label', 'TEXT'),
+                ('section_number', 'TEXT'),
+                ('chunk_method', 'TEXT'),
                 ('token_count', 'INTEGER')
             ]
             
             for col_name, col_type in metadata_columns:
                 try:
+                    # First try to add column if it doesn't exist
                     cursor.execute(f"""
                         ALTER TABLE documents 
                         ADD COLUMN IF NOT EXISTS {col_name} {col_type}
                     """)
+                    # Then try to alter the column type if it already exists
+                    cursor.execute(f"""
+                        ALTER TABLE documents 
+                        ALTER COLUMN {col_name} TYPE {col_type}
+                    """)
                     print(f"  ✓ Column {col_name} ready")
                 except Exception as e:
-                    if "already exists" not in str(e).lower():
+                    if "already exists" not in str(e).lower() and "does not exist" not in str(e).lower():
                         print(f"  ⚠️ Column {col_name}: {e}")
             
             # Update embedding dimension if needed
@@ -208,6 +215,16 @@ class DataIngestionV2:
             else:
                 print("  ✓ Database already empty")
             
+            # Force update column types to TEXT
+            print("  Ensuring column types are TEXT...")
+            try:
+                cursor.execute("ALTER TABLE documents ALTER COLUMN provision_label TYPE TEXT")
+                cursor.execute("ALTER TABLE documents ALTER COLUMN section_number TYPE TEXT")
+                cursor.execute("ALTER TABLE documents ALTER COLUMN chunk_method TYPE TEXT")
+                print("  ✓ Column types updated to TEXT")
+            except Exception as e:
+                print(f"  ⚠️ Column type update: {e}")
+            
             cursor.close()
             
         except Exception as e:
@@ -228,6 +245,7 @@ class DataIngestionV2:
             
             all_chunks = []
             provision_stats = {}
+            filtered_short_chunks = 0
             
             for idx, row in df.iterrows():
                 if MAX_CHUNKS and len(all_chunks) >= MAX_CHUNKS:
@@ -242,10 +260,10 @@ class DataIngestionV2:
                     value = row[col]
                     if pd.notna(value):
                         if col in text_columns:
-                            text_parts.append(f"{col}: {value}")
+                            text_parts.append(str(value))
                         metadata[col] = str(value)
                 
-                full_text = " | ".join(text_parts)
+                full_text = " ".join(text_parts)
                 
                 # Apply hybrid chunking
                 chunks = self.chunker.chunk_document(full_text, metadata)
@@ -253,6 +271,11 @@ class DataIngestionV2:
                 for chunk_idx, chunk in enumerate(chunks):
                     if MAX_CHUNKS and len(all_chunks) >= MAX_CHUNKS:
                         break
+                    
+                    # Filter out chunks that are too short
+                    if chunk.get('token_count', 0) < CHUNK_MIN_TOKENS:
+                        filtered_short_chunks += 1
+                        continue
                     
                     # Track provision distribution
                     label = chunk['provision_label']
@@ -269,6 +292,8 @@ class DataIngestionV2:
                     print(f"  Processed {idx + 1}/{len(df)} rows, {len(all_chunks)} chunks")
             
             print(f"\n✓ Created {len(all_chunks)} chunks from {idx + 1} rows")
+            if filtered_short_chunks > 0:
+                print(f"  ⓘ Filtered out {filtered_short_chunks} chunks (< {CHUNK_MIN_TOKENS} tokens)")
             
             # Display chunking statistics
             stats = self.chunker.get_stats(all_chunks)
@@ -276,6 +301,7 @@ class DataIngestionV2:
             print(f"  Total chunks: {stats['total_chunks']}")
             print(f"  Avg tokens/chunk: {stats['avg_tokens']:.1f}")
             print(f"  Token range: [{stats['min_tokens']}, {stats['max_tokens']}]")
+            print(f"  Min threshold: {CHUNK_MIN_TOKENS} tokens")
             print(f"\n  Provision distribution:")
             for label, count in sorted(provision_stats.items(), key=lambda x: -x[1]):
                 print(f"    {label}: {count} chunks")
@@ -317,14 +343,25 @@ class DataIngestionV2:
             
             # Prepare batch data
             data = []
-            for chunk, embedding in zip(chunks, embeddings):
+            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                provision_label = chunk.get('provision_label', '')
+                section_number = chunk.get('section_number', '')
+                chunk_method = chunk.get('chunk_method', '')
+                
+                # Debug: Check for long values
+                if i < 5:  # Print first 5 for debugging
+                    print(f"  Sample {i+1}:")
+                    print(f"    provision_label length: {len(str(provision_label))}")
+                    print(f"    section_number length: {len(str(section_number))}")
+                    print(f"    chunk_method length: {len(str(chunk_method))}")
+                
                 data.append((
                     chunk['text'],
                     embedding.tolist(),
                     json.dumps(chunk['original_metadata']),
-                    chunk.get('provision_label'),
-                    chunk.get('section_number'),
-                    chunk.get('chunk_method'),
+                    provision_label,
+                    section_number,
+                    chunk_method,
                     chunk.get('token_count')
                 ))
             

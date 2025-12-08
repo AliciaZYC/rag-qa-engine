@@ -12,9 +12,9 @@ CREATE TABLE IF NOT EXISTS documents (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     -- NEW COLUMNS for enhanced legal document support
-    provision_label VARCHAR(100),      -- LEDGAR provision type (e.g., 'indemnification', 'governing_law')
-    section_number VARCHAR(50),        -- Section identifier (e.g., 'Article 5', 'Section 3.2')
-    chunk_method VARCHAR(50),          -- Chunking strategy used (e.g., 'hybrid_structural_semantic')
+    provision_label TEXT,              -- LEDGAR provision type (e.g., 'indemnification', 'governing_law')
+    section_number TEXT,               -- Section identifier (e.g., 'Article 5', 'Section 3.2')
+    chunk_method TEXT,                 -- Chunking strategy used (e.g., 'hybrid_structural_semantic')
     token_count INTEGER                -- Approximate token count for the chunk
 );
 

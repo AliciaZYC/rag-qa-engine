@@ -22,6 +22,7 @@ function App() {
   });
   const [useRAG, setUseRAG] = useState(true); // Toggle for RAG vs simple chat
   const [expandedCitations, setExpandedCitations] = useState({}); // Track expanded citations
+  const [showAllDocs, setShowAllDocs] = useState({}); // Track which messages show all docs
   const messagesEndRef = useRef(null);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL;
@@ -94,7 +95,7 @@ function App() {
       const requestBody = useRAG && backendStatus.embedder && backendStatus.database
         ? {
             message: userMessage.content,
-            top_k: 5,
+            top_k: 10,
             session_id: sessionId,
             include_sources: true
           }
@@ -193,6 +194,22 @@ function App() {
     setExpandedCitations(prev => ({
       ...prev,
       [key]: !prev[key]
+    }));
+  };
+
+  // Extract referenced document numbers from response text
+  const getReferencedDocs = (responseText) => {
+    // Match patterns like [1], [2], [3] in the response
+    const matches = responseText.match(/\[(\d+)\]/g);
+    if (!matches) return [];
+    return [...new Set(matches.map(m => parseInt(m.match(/\d+/)[0])))];
+  };
+
+  // Toggle showing all documents
+  const toggleShowAllDocs = (messageId) => {
+    setShowAllDocs(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId]
     }));
   };
 
@@ -389,16 +406,29 @@ function App() {
                         )}
                       </div>
                       <div className="citations-list">
-                        {message.citations.slice(0, 5).map((citation, idx) => {
-                          const citationKey = `${message.id}-${idx}`;
+                        {(() => {
+                          const referencedDocs = getReferencedDocs(message.content);
+                          const showAll = showAllDocs[message.id];
+                          
+                          // Filter to show only referenced docs or all docs based on toggle
+                          const displayedCitations = showAll 
+                            ? message.citations 
+                            : message.citations.filter(citation => 
+                                referencedDocs.includes(citation.rank)
+                              );
+                          
+                          return (
+                            <>
+                              {displayedCitations.map((citation) => {
+                          const citationKey = `${message.id}-${citation.rank}`;
                           const isExpanded = expandedCitations[citationKey];
                           const shouldTruncate = citation.content.length > 200;
                           
                           return (
                             <div 
-                              key={idx} 
+                              key={citation.rank} 
                               className="citation-item"
-                              onClick={() => shouldTruncate && toggleCitation(message.id, idx)}
+                              onClick={() => shouldTruncate && toggleCitation(message.id, citation.rank)}
                               style={{ 
                                 cursor: shouldTruncate ? 'pointer' : 'default',
                                 transition: 'all 0.2s ease'
@@ -435,8 +465,48 @@ function App() {
                                 </div>
                               )}
                             </div>
+                              );
+                            })}
+                            
+                            {/* Show All/Less Documents Button */}
+                            {referencedDocs.length < message.citations.length && (
+                              <button
+                                onClick={() => toggleShowAllDocs(message.id)}
+                                style={{
+                                  marginTop: '0.75rem',
+                                  padding: '0.5rem 1rem',
+                                  background: 'rgba(99, 102, 241, 0.1)',
+                                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                                  borderRadius: '8px',
+                                  color: '#6366f1',
+                                  fontSize: '0.875rem',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  width: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '0.5rem'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background = 'rgba(99, 102, 241, 0.15)';
+                                  e.target.style.borderColor = 'rgba(99, 102, 241, 0.5)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background = 'rgba(99, 102, 241, 0.1)';
+                                  e.target.style.borderColor = 'rgba(99, 102, 241, 0.3)';
+                                }}
+                              >
+                                {showAll 
+                                  ? `▲ Show only referenced documents (${referencedDocs.length})`
+                                  : `▼ Show all ${message.citations.length} documents`
+                                }
+                              </button>
+                            )}
+                          </>
                           );
-                        })}
+                        })()}
                       </div>
                       {/* Model Info */}
                       {message.modelInfo && (
