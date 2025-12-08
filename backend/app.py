@@ -125,6 +125,46 @@ except Exception as e:
     traceback.print_exc()
 print("=" * 60 + "\n")
 
+# Add this helper function after the imports section (around line 40)
+def needs_retrieval(message: str) -> bool:
+    """
+    Determine if a user message requires document retrieval.
+    Returns False for greetings, casual messages, and meta questions.
+    Returns True for actual legal/contract questions.
+    """
+    message_lower = message.lower().strip()
+    
+    # Common greetings and casual messages that don't need retrieval
+    non_retrieval_patterns = [
+        # Greetings
+        'hi', 'hello', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening',
+        # Farewells
+        'bye', 'goodbye', 'see you', 'thanks', 'thank you',
+        # Meta questions
+        'how are you', 'what can you do', 'who are you', 'help',
+        # Very short messages
+    ]
+    
+    # Check if message is very short (likely a greeting)
+    if len(message_lower) < 3:
+        return False
+    
+    # Check against non-retrieval patterns
+    for pattern in non_retrieval_patterns:
+        if message_lower == pattern or message_lower.startswith(pattern + ' ') or message_lower.startswith(pattern + '?'):
+            return False
+    
+    # If message has question indicators, it likely needs retrieval
+    question_indicators = ['what', 'how', 'when', 'where', 'who', 'why', 'which', 'can', 'does', 'is', 'are']
+    has_question_word = any(word in message_lower.split()[:3] for word in question_indicators)
+    
+    # Has question mark or question word = likely needs retrieval
+    if '?' in message or has_question_word:
+        return True
+    
+    # Default: if message is substantive (>10 chars), assume it needs retrieval
+    return len(message) > 10
+
 @app.route('/')
 def home():
     return jsonify({
@@ -238,7 +278,55 @@ def rag_chat():
                 "fallback": "Use /api/chat/simple for non-RAG chat"
             }), 503
         
-        # Step 1: Embed the user query
+        # NEW: Check if retrieval is needed
+        if not needs_retrieval(user_query):
+            print(f"[RAG] Query doesn't require retrieval: {user_query}")
+            
+            # Get or create conversation context
+            if session_id not in conversations:
+                conversations[session_id] = []
+            
+            # Simple system prompt for greetings/casual messages
+            system_prompt = """You are an expert legal document assistant. Respond naturally to greetings and casual messages. 
+When the user asks questions about contracts, you will retrieve and reference relevant documents."""
+            
+            # Build messages
+            messages = [
+                {"role": "system", "content": system_prompt}
+            ]
+            
+            # Add recent history
+            if conversations[session_id]:
+                messages.extend(conversations[session_id][-6:])
+            
+            # Add current message
+            messages.append({"role": "user", "content": user_query})
+            
+            # Get LLM response without retrieval
+            print(f"[RAG] Generating response without retrieval...")
+            ai_response = ollama.chat(messages)
+            
+            # Update conversation history
+            conversations[session_id].append({"role": "user", "content": user_query})
+            conversations[session_id].append({"role": "assistant", "content": ai_response})
+            
+            # Limit history
+            if len(conversations[session_id]) > 20:
+                conversations[session_id] = conversations[session_id][-20:]
+            
+            # Return response WITHOUT sources
+            return jsonify({
+                "query": user_query,
+                "response": ai_response,
+                "sources": [],  # Empty sources for non-retrieval responses
+                "model_info": {
+                    "llm_model": OLLAMA_MODEL,
+                    "retrieval_used": False
+                },
+                "session_id": session_id
+            })
+        
+        # EXISTING: Continue with full retrieval for actual questions
         print(f"[RAG] Query: {user_query}")
         query_embedding = embedder.encode_query(user_query)
         
