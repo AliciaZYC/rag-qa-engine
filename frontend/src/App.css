@@ -793,3 +793,33 @@ input[type="checkbox"]:checked::before {
     transform: translateY(0);
   }
 }
+
+/* Expand/Collapse indicator styling */
+.citation-item .expand-indicator {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #10b981;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: color 0.2s ease;
+}
+
+.citation-item:hover .expand-indicator {
+  color: #34d399;
+}
+
+.citation-item .expand-indicator::after {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  transition: width 0.2s ease;
+}
+
+.citation-item:hover .expand-indicator::after {
+  width: 24px;
+}

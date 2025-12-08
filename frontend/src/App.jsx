@@ -21,6 +21,7 @@ function App() {
     checked: false,
   });
   const [useRAG, setUseRAG] = useState(true); // Toggle for RAG vs simple chat
+  const [expandedCitations, setExpandedCitations] = useState({}); // Track expanded citations
   const messagesEndRef = useRef(null);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL;
@@ -184,6 +185,15 @@ function App() {
   // Helper to format similarity score
   const formatSimilarity = (score) => {
     return (score * 100).toFixed(1);
+  };
+
+  // Toggle citation expansion
+  const toggleCitation = (messageId, citationIdx) => {
+    const key = `${messageId}-${citationIdx}`;
+    setExpandedCitations(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
   return (
@@ -379,40 +389,54 @@ function App() {
                         )}
                       </div>
                       <div className="citations-list">
-                        {message.citations.slice(0, 3).map((citation, idx) => (
-                          <div key={idx} className="citation-item">
-                            <div className="citation-header">
-                              <span className="citation-source">
-                                Document {citation.rank}
-                                {citation.provision_label && 
-                                  ` - ${citation.provision_label}`}
-                                {citation.section_number && 
-                                  ` (${citation.section_number})`}
-                              </span>
-                              <span className="citation-relevance">
-                                {formatSimilarity(citation.similarity)}% match
-                              </span>
-                            </div>
-                            <p className="citation-excerpt">
-                              {citation.content.length > 200
-                                ? citation.content.substring(0, 200) + "..."
-                                : citation.content}
-                            </p>
-                            {citation.token_count && (
-                              <div style={{ 
-                                fontSize: '0.75rem', 
-                                color: '#6b7280',
-                                marginTop: '0.5rem',
-                                display: 'flex',
-                                gap: '1rem'
-                              }}>
-                                <span>ID: {citation.id}</span>
-                                <span>Tokens: {citation.token_count}</span>
-                                <span>Method: {citation.chunk_method}</span>
+                        {message.citations.slice(0, 5).map((citation, idx) => {
+                          const citationKey = `${message.id}-${idx}`;
+                          const isExpanded = expandedCitations[citationKey];
+                          const shouldTruncate = citation.content.length > 200;
+                          
+                          return (
+                            <div 
+                              key={idx} 
+                              className="citation-item"
+                              onClick={() => shouldTruncate && toggleCitation(message.id, idx)}
+                              style={{ 
+                                cursor: shouldTruncate ? 'pointer' : 'default',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              <div className="citation-header">
+                                <span className="citation-source">
+                                  Document {citation.rank}
+                                  {citation.provision_label && 
+                                    ` - ${citation.provision_label}`}
+                                  {citation.section_number && 
+                                    ` (${citation.section_number})`}
+                                </span>
+                                <span className="citation-relevance">
+                                  {formatSimilarity(citation.similarity)}% match
+                                </span>
                               </div>
-                            )}
-                          </div>
-                        ))}
+                              <p className="citation-excerpt">
+                                {isExpanded || !shouldTruncate
+                                  ? citation.content
+                                  : citation.content.substring(0, 200) + "..."}
+                              </p>
+                              {citation.token_count && (
+                                <div style={{ 
+                                  fontSize: '0.75rem', 
+                                  color: '#6b7280',
+                                  marginTop: '0.5rem',
+                                  display: 'flex',
+                                  gap: '1rem'
+                                }}>
+                                  <span>ID: {citation.id}</span>
+                                  <span>Tokens: {citation.token_count}</span>
+                                  <span>Method: {citation.chunk_method}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                       {/* Model Info */}
                       {message.modelInfo && (
