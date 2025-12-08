@@ -23,7 +23,7 @@ from embeddings import DualEmbedder, ModelType
 
 # Configuration
 BATCH_SIZE = 100
-MAX_CHUNKS = 100  # Set to None for all data
+MAX_CHUNKS = 3000  # Set to None for all data
 DATA_PATH = '/app/data/train.parquet'
 
 # Chunking config
@@ -191,7 +191,29 @@ class DataIngestionV2:
             import traceback
             traceback.print_exc()
             # Don't exit - continue with ingestion if schema is mostly ready
-    
+    def clear_database(self):
+        try:    
+            print("\nClearing existing documents...")
+            cursor = self.conn.cursor()
+            
+            # Get current count
+            cursor.execute("SELECT COUNT(*) FROM documents")
+            count = cursor.fetchone()[0]
+            
+            if count > 0:
+                print(f"  Found {count} existing documents")
+                cursor.execute("TRUNCATE TABLE documents RESTART IDENTITY CASCADE")
+                self.conn.commit()
+                print(f"  ✓ Deleted {count} documents")
+            else:
+                print("  ✓ Database already empty")
+            
+            cursor.close()
+            
+        except Exception as e:
+            print(f"  ⚠️ Clear database warning: {e}")
+            # Don't exit - continue with ingestion
+
     def load_and_chunk_data(self):
         """Load parquet data and apply hybrid chunking"""
         try:
@@ -382,19 +404,21 @@ class DataIngestionV2:
         print("=" * 60)
         
         try:
-            # Step 0: Update schema
+            # Step 0: Clear database
+            self.clear_database()
+            # Step 1: Update schema
             self.update_schema()
             
-            # Step 1: Load and chunk data
+            # Step 2: Load and chunk data
             chunks = self.load_and_chunk_data()
             
-            # Step 2: Generate embeddings
+            # Step 3: Generate embeddings
             embeddings = self.generate_embeddings(chunks)
             
-            # Step 3: Insert into database
+            # Step 4: Insert into database
             self.insert_chunks(chunks, embeddings)
             
-            # Step 4: Create indexes
+            # Step 5: Create indexes
             self.create_indexes()
             
             elapsed = (datetime.now() - start_time).total_seconds()
