@@ -35,8 +35,12 @@ docker-compose exec backend python download_models.py
 # 3. Run data ingestion with upgraded pipeline (LegalBERT + Hybrid Chunking)
 docker-compose exec backend python db/ingest_data.py
 
-# 4. Verify system is ready
+# Errors may happend and solution to fix:
+# Verify system is ready
 docker-compose exec backend python -c "from embeddings import DualEmbedder, ModelType; print('✓ Embeddings working')"
+
+# Check database connection and kill idle connections
+docker-compose exec backend python db/check_connections.py
 ```
 
 ### Access Points

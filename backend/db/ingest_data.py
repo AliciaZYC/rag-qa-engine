@@ -44,7 +44,7 @@ class DataIngestionV2:
         self.initialize_models()
     
     def connect_db(self):
-        """Connect to PostgreSQL database"""
+        """Connect to PostgreSQL database with proper settings"""
         try:
             self.conn = psycopg2.connect(
                 host=os.getenv('DB_HOST', 'postgres'),
@@ -53,6 +53,8 @@ class DataIngestionV2:
                 user=os.getenv('DB_USER', 'rag_user'),
                 password=os.getenv('DB_PASSWORD', 'rag_password')
             )
+            # Enable autocommit for DDL operations
+            self.conn.autocommit = True
             register_vector(self.conn)
             print("✓ Database connected")
         except Exception as e:
@@ -104,7 +106,10 @@ class DataIngestionV2:
             print("\nUpdating database schema...")
             cursor = self.conn.cursor()
             
-            # Add new metadata columns if they don't exist
+            # Set timeout to prevent hanging
+            cursor.execute("SET statement_timeout = '30s'")
+            
+            # Add new metadata columns (one at a time with error handling)
             metadata_columns = [
                 ('provision_label', 'VARCHAR(100)'),
                 ('section_number', 'VARCHAR(50)'),
@@ -118,34 +123,74 @@ class DataIngestionV2:
                         ALTER TABLE documents 
                         ADD COLUMN IF NOT EXISTS {col_name} {col_type}
                     """)
-                    print(f"  ✓ Added column: {col_name}")
+                    print(f"  ✓ Column {col_name} ready")
                 except Exception as e:
                     if "already exists" not in str(e).lower():
                         print(f"  ⚠️ Column {col_name}: {e}")
             
-            # Update embedding dimension if using LegalBERT
+            # Update embedding dimension if needed
             target_dim = self.embedder.get_dimension()
             if target_dim == 768:
-                print(f"\n  Updating embedding dimension to {target_dim}...")
                 try:
-                    cursor.execute(f"""
-                        ALTER TABLE documents 
-                        ALTER COLUMN embedding TYPE vector({target_dim})
+                    # Check current dimension
+                    cursor.execute("""
+                        SELECT atttypmod 
+                        FROM pg_attribute 
+                        WHERE attrelid = 'documents'::regclass 
+                        AND attname = 'embedding'
                     """)
-                    print(f"  ✓ Embedding dimension updated to {target_dim}")
-                except Exception as e:
-                    if "type vector does not exist" in str(e).lower():
-                        print(f"  ⚠️ Dimension update skipped: {e}")
+                    result = cursor.fetchone()
+                    current_dim = (result[0] - 4) if result and result[0] > 0 else None
+                    
+                    if current_dim != 768:
+                        print(f"  Updating embedding: {current_dim} → 768 dimensions...")
+                        
+                        # Check if table has data
+                        cursor.execute("SELECT COUNT(*) FROM documents")
+                        count = cursor.fetchone()[0]
+                        
+                        if count > 0:
+                            print(f"  ⚠️ Table has {count} rows with {current_dim}-dim vectors")
+                            print(f"  Clearing table to update dimension...")
+                            cursor.execute("TRUNCATE TABLE documents")
+                        
+                        cursor.execute("""
+                            ALTER TABLE documents 
+                            ALTER COLUMN embedding TYPE vector(768)
+                        """)
+                        print(f"  ✓ Embedding dimension updated to 768")
                     else:
-                        print(f"  ⚠️ Dimension update: {e}")
+                        print(f"  ✓ Embedding dimension already 768")
+                except Exception as e:
+                    print(f"  ⚠️ Dimension update: {e}")
             
-            self.conn.commit()
+            # Create indexes (idempotent)
+            print("  Creating metadata indexes...")
+            try:
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_provision_label 
+                    ON documents(provision_label)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_section_number 
+                    ON documents(section_number)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_chunk_method 
+                    ON documents(chunk_method)
+                """)
+                print("  ✓ Metadata indexes created")
+            except Exception as e:
+                print(f"  ⚠️ Index creation: {e}")
+            
             print("✓ Schema update complete\n")
             cursor.close()
             
         except Exception as e:
             print(f"✗ Schema update failed: {e}")
-            self.conn.rollback()
+            import traceback
+            traceback.print_exc()
+            # Don't exit - continue with ingestion if schema is mostly ready
     
     def load_and_chunk_data(self):
         """Load parquet data and apply hybrid chunking"""
