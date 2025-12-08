@@ -23,7 +23,7 @@ from embeddings import DualEmbedder, ModelType
 
 # Configuration
 BATCH_SIZE = 100
-MAX_CHUNKS = 3000  # Set to None for all data
+MAX_CHUNKS = 10000  # Set to None for all data (unlimited chunks)
 DATA_PATH = '/app/data/train.parquet'
 
 # Chunking config

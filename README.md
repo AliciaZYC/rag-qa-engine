@@ -70,7 +70,7 @@ docker-compose exec backend python run_ingestion.py
 
 - `CHUNK_MAX_TOKENS = 800` - Maximum tokens per chunk
 - `CHUNK_MIN_TOKENS = 100` - Minimum tokens per chunk (filters short chunks)
-- `MAX_CHUNKS = 3000` - Limit chunks (set to `None` for all data)
+- `MAX_CHUNKS = None` - Unlimited chunks (set to number to limit for testing)
 - `SEMANTIC_THRESHOLD = 0.5` - Semantic similarity threshold for chunking
 - `USE_LEGAL_BERT = True` - Use LegalBERT (768-dim) or MiniLM fallback (384-dim)
 
