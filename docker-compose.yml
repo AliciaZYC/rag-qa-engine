@@ -36,7 +36,7 @@ services:
       - DB_USER=rag_user
       - DB_PASSWORD=rag_password
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=qwen2.5:0.5b
+      - OLLAMA_MODEL=qwen2.5:14b
     depends_on:
       postgres:
         condition: service_healthy
