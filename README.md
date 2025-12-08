@@ -21,18 +21,18 @@
 ollama serve
 
 # In a new terminal, pull the model
-ollama pull qwen2.5:0.5b
+ollama pull qwen2.5:14b
 ```
 
 ### Setup and Run
 ```bash
 # 1. Build and start Docker containers
-docker-compose up --build -d
+docker-compose up --build
 
 # 2. Download embedding models and NLTK data (first time only)
 docker-compose exec backend python download_models.py
 
-# 3. Run data ingestion with upgraded pipeline (LegalBERT + Hybrid Chunking)
+# 3. Run data ingestion (LegalBERT 768-dim + Hybrid Chunking)
 docker-compose exec backend python db/ingest_data.py
 
 # Errors may happend and solution to fix:
@@ -51,19 +51,6 @@ docker-compose exec backend python db/check_connections.py
 
 **Note:** If localhost doesn't work, use http://127.0.0.1:5173
 
-### Quick Verification (PowerShell)
-
-Test all components with a single command:
-```powershell
-.\verify_functionality.ps1
-```
-
-This will check:
-- Frontend accessibility
-- Backend health (Ollama, Database, Embedder)
-- Database document count
-- LegalBERT embeddings (768-dim)
-
 ## Data Ingestion
 
 Load data into PostgreSQL with vector embeddings:
@@ -74,15 +61,18 @@ docker-compose exec backend python run_ingestion.py
 **What it does:**
 
 1. Loads `backend/data/train.parquet`
-2. Chunks text into 1000-character segments
-3. Generates 384-dim embeddings using `sentence-transformers`
+2. Applies hybrid structural-semantic chunking (token-based)
+3. Generates 768-dim embeddings using LegalBERT (with MiniLM fallback)
 4. Stores in PostgreSQL with pgvector
 5. Creates HNSW index for similarity search
 
 **Configuration:** Edit `backend/db/ingest_data.py`
 
-- `CHUNK_SIZE = 1000` - Characters per chunk
-- `MAX_CHUNKS = 100` - Limit chunks (set to `None` for all data)
+- `CHUNK_MAX_TOKENS = 800` - Maximum tokens per chunk
+- `CHUNK_MIN_TOKENS = 100` - Minimum tokens per chunk (filters short chunks)
+- `MAX_CHUNKS = 3000` - Limit chunks (set to `None` for all data)
+- `SEMANTIC_THRESHOLD = 0.5` - Semantic similarity threshold for chunking
+- `USE_LEGAL_BERT = True` - Use LegalBERT (768-dim) or MiniLM fallback (384-dim)
 
 **Verify ingestion:**
 ```bash
