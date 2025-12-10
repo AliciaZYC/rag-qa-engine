@@ -1,5 +1,7 @@
 # RAG QA Engine
 
+[Demo Video Link](https://drive.google.com/file/d/1nX515zTst9DWPnhD6HebCWI6JwkXothx/view?usp=sharing)
+
 ## Tech Stack
 
 **Frontend:** React + Vite  
@@ -12,10 +14,12 @@
 ### Prerequisites
 
 1. **Install Ollama**
+
    - Download from https://ollama.com/download
    - Or use: `curl -fsSL https://ollama.com/install.sh | sh`
 
 2. **Start Ollama and Download Model**
+
 ```bash
 # Start Ollama service (keep this running)
 ollama serve
@@ -25,6 +29,7 @@ ollama pull qwen2.5:14b
 ```
 
 ### Setup and Run
+
 ```bash
 # 1. Build and start Docker containers
 docker-compose up --build
@@ -54,6 +59,7 @@ docker-compose exec backend python db/check_connections.py
 ## Data Ingestion
 
 Load data into PostgreSQL with vector embeddings:
+
 ```bash
 docker-compose exec backend python run_ingestion.py
 ```
@@ -75,6 +81,7 @@ docker-compose exec backend python run_ingestion.py
 - `USE_LEGAL_BERT = True` - Use LegalBERT (768-dim) or MiniLM fallback (384-dim)
 
 **Verify ingestion:**
+
 ```bash
 curl http://localhost:5001/api/db/test
 ```
@@ -89,6 +96,7 @@ go to http://localhost:8080, click add new server
 then save it
 
 ## Stop
+
 ```bash
 docker-compose down
 ```
